@@ -1,13 +1,22 @@
 package main
 
 import (
+	"bytes"
+	"embed"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/ebitengine/oto/v3"
+	"github.com/hajimehoshi/go-mp3"
 )
+
+//go:embed *.mp3
+var content embed.FS
 
 type state int
 
@@ -27,6 +36,7 @@ const (
 type Pomodoro struct {
 	max_time     int
 	time_elapsed chan int
+	music        *oto.Player
 }
 
 func (p *Pomodoro) UpdateSeconds() {
@@ -35,6 +45,11 @@ func (p *Pomodoro) UpdateSeconds() {
 			// need to run infinite times until globalstate enum changes to smth else
 			if GlobalTimer > p.max_time && GlobalState != NOTHING {
 				p.ToggleState()
+				p.music.Play()
+				for p.music.IsPlaying() {
+					time.Sleep(time.Millisecond)
+				}
+				_, _ = p.music.Seek(0, 0)
 			}
 			p.time_elapsed <- GlobalTimer
 			time.Sleep(time.Millisecond * 1000)
@@ -56,7 +71,29 @@ func (p *Pomodoro) ToggleState() {
 		return
 	}
 	p.ChangeState(WORKING_TIME, WORKING)
-	return
+}
+
+// copied from: https://github.com/ebitengine/oto?tab=readme-ov-file#linux
+func createAudioInstance() *oto.Player {
+	fileBytes, err := content.ReadFile("notification.mp3")
+	if err != nil {
+		log.Panic("failed to read mp3: ", err)
+	}
+	fileByetsReader := bytes.NewReader(fileBytes)
+	decodedMp3, err := mp3.NewDecoder(fileByetsReader)
+	if err != nil {
+		log.Panic("failed to decode mp3: ", err)
+	}
+	op := &oto.NewContextOptions{}
+	op.SampleRate = 44100
+	op.ChannelCount = 2
+	op.Format = oto.FormatSignedInt16LE
+	otoCtx, readyChan, err := oto.NewContext(op)
+	if err != nil {
+		panic("oto.NewContext failed: " + err.Error())
+	}
+	<-readyChan
+	return otoCtx.NewPlayer(decodedMp3)
 }
 
 func main() {
@@ -80,6 +117,7 @@ func main() {
 	pomo := Pomodoro{
 		max_time:     WORKING_TIME,
 		time_elapsed: elapsed,
+		music:        createAudioInstance(),
 	}
 
 	go pomo.UpdateSeconds()

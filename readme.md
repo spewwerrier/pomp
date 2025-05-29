@@ -38,3 +38,6 @@ And consider styling it as well.
 
 Right click on module to start the timer on initial start. Otherwise toggle the state from
 working to resting and vice versa. Left click pauses the timer.
+
+# credits:
+- Notification audio: https://pixabay.com/sound-effects/notification-ping-335500/
